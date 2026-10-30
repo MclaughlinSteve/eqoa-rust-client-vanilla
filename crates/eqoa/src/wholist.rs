@@ -17,10 +17,14 @@
 //! there now another player's), the heading sorted by marked before and
 //! after, and the legend the patch's (F3 20261023-185531). Its words and
 //! tables are read out of the patch where its code names them; with none,
-//! or a patch of another shape, the client's own sort above. As on a PS2,
-//! the patch sorts a list only when its count is not the one it last sorted,
-//! so a list sent again with the same count keeps the server's own order
-//! (Sandstorm's: CM count first; `WhoList::patch_get_list`).
+//! or a patch of another shape, the client's own sort above.
+//!
+//! Not the patch's: with it ○ shows the list in the server's own order,
+//! Sandstorm's CM order (CM count first, F3 2026-10-29), no heading marked,
+//! and ○ again goes back to the column (`WhoList::cm`); the legend names it.
+//! The patch shows that order only by chance (it sorts a list only when its
+//! count is not the one it last sorted, `WhoList::patch_get_list`): here a
+//! list the server sends is always sorted by the column marked.
 
 #![allow(clippy::too_many_arguments)]
 
@@ -329,6 +333,10 @@ const HEADING: i32 = -10;
 /// The client's word for its sort in the legends (no WORDS.TXT entry).
 pub const SORT: &str = "Sort";
 
+/// The legend's word for ○ with the patch's sort: the server's own order
+/// (`WhoList::cm`).
+pub const CM_ORDER: &str = "CM Order";
+
 /// `VIWndOptionList`: choices under a title, the chosen one ticked.
 #[derive(Default)]
 pub struct OptionList {
@@ -485,6 +493,9 @@ pub struct WhoList {
     patch_order: Vec<usize>,
     patch_gen: u64,
     patch_count: Option<usize>,
+    /// with the patch's sort, the rows in the server's own order (○;
+    /// Sandstorm's CM order), `sort` kept for ○ again
+    cm: bool,
 }
 
 impl WhoList {
@@ -492,6 +503,7 @@ impl WhoList {
     /// last left them), or the client's.
     fn order(&self, vui: &Vui, list: &[WhoRow]) -> Vec<usize> {
         match &self.patch {
+            Some(_) if self.cm => (0..list.len()).collect(),
             Some(_) if self.patch_order.len() == list.len() => self.patch_order.clone(),
             Some(p) => p.order(self.sort, list),
             None => order(self.sort, list, &|id: i32| vui.words.get(id, vui.language).to_string()),
@@ -506,12 +518,15 @@ impl WhoList {
     /// freed (`Close`'s `VIVector::Clear`, then the same growth), so a list
     /// of the same count stays in the server's own order (Sandstorm's: CM
     /// count first) until the count changes or a key moves the column (its
-    /// `OnKeyDown` zeroes FC004). The first list is sorted.
+    /// `OnKeyDown` zeroes FC004). Not the patch's: here every list received
+    /// is sorted, so the rows are always in the order of the heading marked
+    /// (the server's own order is ○'s, `cm`).
     fn patch_get_list(&mut self, who: &Who) {
         let Some(p) = self.patch.clone() else { return };
         if who.received != self.patch_gen || self.patch_order.len() != who.list.len() {
             self.patch_gen = who.received;
             self.patch_order = (0..who.list.len()).collect();
+            self.patch_count = None;
         }
         let n = who.list.len();
         if n < 2 || self.patch_count == Some(n) {
@@ -526,6 +541,12 @@ impl WhoList {
     fn set_sort(&mut self, sort: Sort) {
         self.sort = sort;
         self.patch_count = None;
+    }
+
+    /// The rows sorted by a column again, the server's order (`cm`) left.
+    fn sort_by(&mut self, sort: Sort) {
+        self.cm = false;
+        self.set_sort(sort);
     }
 
     /// A pointer at frame point `p` (`pointer`): with the popup up, its
@@ -552,13 +573,13 @@ impl WhoList {
             // sorted by is nothing
             Some(h) if h <= HEADING => {
                 let sort = Sort::ALL[(HEADING - h) as usize];
-                if sort == self.sort {
+                if sort == self.sort && !self.cm {
                     return Vec::new();
                 }
                 if self.patch.is_none() {
                     self.keep = self.view.get(self.sel.max(0) as usize).copied();
                 }
-                self.set_sort(sort);
+                self.sort_by(sort);
                 vec![MOVED]
             }
             Some(row) if row == self.sel => vec![key::CROSS],
@@ -595,11 +616,7 @@ impl WhoList {
         self.top = 0;
         self.flash.reset();
         self.patch = PatchSort::current();
-        // a column changed as a key changes it (the patch's sort done again);
-        // by name already, a list sent again keeps the server's order
-        if self.sort != Sort::default() {
-            self.set_sort(Sort::default());
-        }
+        self.sort_by(Sort::default());
         self.keep = None;
     }
 
@@ -652,9 +669,21 @@ impl WhoList {
             }
             // the patch's sort (S2's `OnKeyDown`, before the game's, which
             // takes none of these): a column back or on, the selection left
-            // where it is in the list
-            k if self.patch.as_ref().is_some_and(|p| p.back.contains(&k)) => self.set_sort(self.sort.prev()),
-            k if self.patch.as_ref().is_some_and(|p| p.on.contains(&k)) => self.set_sort(self.sort.next()),
+            // where it is in the list; from the server's order, one from the
+            // column kept
+            k if self.patch.as_ref().is_some_and(|p| p.back.contains(&k)) => self.sort_by(self.sort.prev()),
+            k if self.patch.as_ref().is_some_and(|p| p.on.contains(&k)) => self.sort_by(self.sort.next()),
+            // ○ with the patch's sort: the server's own order (Sandstorm's
+            // CM order), or back to the column; the selection keeps its place
+            135 if self.patch.is_some() => {
+                if self.cm {
+                    self.sort_by(self.sort);
+                } else {
+                    self.cm = true;
+                }
+                self.window.reset_tick_pulse(now);
+                cues.push(11);
+            }
             // ○ (the client's): the next column's order, the selected row
             // kept selected (with the patch's sort, its place, as the
             // patch's keys keep it)
@@ -706,14 +735,17 @@ impl WhoList {
         let c0 = UI_COLORS[0];
         // the headings, the one sorted by in the selection's colour (the
         // client's) or, with the patch's sort, between its marks (S2's
-        // `OnDrawSelf`, after the headings), each a pointer's sort
+        // `OnDrawSelf`, after the headings; none in the server's order),
+        // each a pointer's sort
         let ends = [x[1], x[2], x[3], width - 40];
         for (k, sort) in Sort::ALL.into_iter().enumerate() {
             let c = UI_COLORS[(sort == self.sort && self.patch.is_none()) as usize];
             self.window.text_box(vui, r, &w(sort.word()), x[k], 0, ends[k] - x[k], 1, c, 0);
             self.hits.push(rows_rect(&self.window, vui, r, x[k], 0, ends[k] - x[k], 1), HEADING - k as i32);
         }
-        if let Some(p) = &self.patch {
+        if let Some(p) = &self.patch
+            && !self.cm
+        {
             let k = self.sort as usize;
             self.window.text_box(vui, r, &p.marks[0], p.before[k], 0, 12, 1, c0, 0);
             self.window.text_box(vui, r, &p.marks[1], p.after[k], 0, 12, 1, c0, 0);
@@ -737,9 +769,14 @@ impl WhoList {
         }
         let word = |id: i32| vui.words.get(id, vui.language).to_string();
         // the game's legend, and the client's ○ Sort with its column; the
-        // patch's, with its keys and its word, when it sorts
+        // patch's, with its keys and its word, when it sorts, and ○ for the
+        // server's order
         let legend = match &self.patch {
-            Some(p) => crate::searchwnd::format(&p.legend, &[&w(212), &w(161), &w(811), &p.sort_word], 256),
+            Some(p) => {
+                let mut l = crate::searchwnd::format(&p.legend, &[&w(212), &w(161), &w(811), &p.sort_word], 256);
+                l.extend(wide(&format!("   |c{CM_ORDER}")));
+                l
+            }
             None => wide(&format!("|x{}   |t{}   |s{}   |c{}: {}", word(212), word(161), word(811), SORT, word(self.sort.word()))),
         };
         self.window.text_box(vui, r, &legend, 30, 12, width - 60, 1, c0, 0);
@@ -1041,14 +1078,15 @@ mod tests {
     /// whose race table is built into another register is refused.
     /// S2's `GetList` sorts a list only when its count is not the one it
     /// last sorted (FC004/FC008: the buffer and the count; a list the server
-    /// sends again lands in the buffer the last one freed). So the first list
-    /// is sorted by the column, a second of the same count stays in the
-    /// server's own order (Sandstorm's: CM count first, F3 2026-10-29) until a
-    /// key moves the column, and one of another count is sorted. The control:
-    /// the patch's sort run on every list, as before, puts the second in
-    /// name order.
+    /// sends again lands in the buffer the last one freed), so on a PS2 a
+    /// second of the same count stays in the server's own order (Sandstorm's:
+    /// CM count first, F3 2026-10-29) under the heading marked. Here every
+    /// list received is sorted (the server's order is ○'s): the first, a
+    /// second of the same count, one of another; the same list looked at
+    /// again is left as it is. The control: the second list in the server's
+    /// order is not its name order.
     #[test]
-    fn a_list_sent_again_with_the_same_count_keeps_the_servers_order() {
+    fn every_list_sent_is_sorted_by_the_column() {
         let p = Arc::new(patch_sort());
         let mut wl = WhoList { patch: Some(p.clone()), ..Default::default() };
         let mut who = Who::default();
@@ -1063,8 +1101,8 @@ mod tests {
         who.list = rows(&["Endo", "Mud", "Abe"]);
         who.received = 2;
         wl.patch_get_list(&who);
-        assert_eq!(shown(&wl, &who), ["Endo", "Mud", "Abe"], "sent again with the same count: the server's order");
-        assert_ne!(p.order(Sort::Name, &who.list), vec![0, 1, 2], "the control: sorted every time, the server's order is lost");
+        assert_eq!(shown(&wl, &who), ["Abe", "Endo", "Mud"], "sent again with the same count: sorted too");
+        assert_ne!(p.order(Sort::Name, &who.list), vec![0, 1, 2], "the control: the server's order is not the names'");
         wl.set_sort(Sort::Level);
         wl.set_sort(Sort::Name);
         wl.patch_get_list(&who);
@@ -1144,8 +1182,8 @@ mod tests {
     /// With the patch's sort (F3 20261023-185531: "anchor to whatever
     /// position in the list you are currently on"), R1 and right go a column
     /// on and L1 and left one back, the selection staying where it is in the
-    /// list (the player there now another); ○ and a heading too. The
-    /// control: the client's own sort keeps the player selected instead.
+    /// list (the player there now another); a heading too. The control: the
+    /// client's own sort keeps the player selected instead.
     #[test]
     fn the_patchs_sort_keeps_the_selections_place() {
         use crate::pointer::testing::{NullRaster, mid, vui};
@@ -1173,10 +1211,7 @@ mod tests {
         l.key(&vui, &r, &who, 140, true, 0, &mut cues);
         l.key(&vui, &r, &who, 136, true, 0, &mut cues);
         assert_eq!((l.sort, l.sel), (Sort::Race, 2));
-        // ○ and a heading keep the place too
-        l.key(&vui, &r, &who, 135, true, 0, &mut cues);
-        l.draw(&vui, &mut r, &who, 32, true, &mut cues);
-        assert_eq!((l.sort, l.sel), (Sort::Class, 2));
+        // a heading keeps the place too
         let level = mid(rows_rect(&l.window, &vui, &NullRaster, 500, 0, 60, 1));
         assert_eq!(l.point(level), vec![MOVED]);
         l.draw(&vui, &mut r, &who, 48, true, &mut cues);
@@ -1213,8 +1248,10 @@ mod tests {
             l.patch = patch.clone();
             l.draw(&vui, &mut r, &who, 0, true, &mut cues);
             l.sel = 1;
+            // ○ the client's; with the patch's sort, right (○ is its CM order)
+            let on = if patch.is_some() { 137 } else { 135 };
             for _ in 0..3 {
-                l.key(&vui, &r, &who, 135, true, 0, &mut cues);
+                l.key(&vui, &r, &who, on, true, 0, &mut cues);
             }
             assert_eq!(l.sort, Sort::Level);
             // the control: Update keeps it
@@ -1265,13 +1302,79 @@ mod tests {
         assert_eq!((before[0] - x0, after[0] - x0), (385, 464), "the class's places");
         assert_eq!((Some(before[1]), Some(after[1])), (heading_y, heading_y), "on the headings' row");
         // the legend's words between its glyphs: the patch's last
-        assert!(t.0.iter().any(|(_, s)| s == "Order") && !t.0.iter().any(|(_, s)| s.contains(SORT)), "the patch's legend: {:?}", t.0);
+        assert!(t.0.iter().any(|(_, s)| s.trim_end() == "Order") && !t.0.iter().any(|(_, s)| s.contains(SORT)), "the patch's legend: {:?}", t.0);
+        assert!(t.0.iter().any(|(_, s)| s == CM_ORDER), "and ○'s server order: {:?}", t.0);
         let mut c = WhoList::default();
         c.open(&vui, &Texts::default());
         c.sort = Sort::Class;
         let mut t = Texts::default();
         c.draw(&vui, &mut t, &who, 0, true, &mut cues);
         assert!(at(&t, "<").is_none() && at(&t, ">").is_none(), "the control: no marks");
-        assert!(t.0.iter().any(|(_, s)| s.contains(SORT)) && !t.0.iter().any(|(_, s)| s == "Order"), "the client's legend");
+        assert!(t.0.iter().any(|(_, s)| s.contains(SORT)) && !t.0.iter().any(|(_, s)| s == "Order" || s.contains(CM_ORDER)), "the client's legend");
+    }
+
+    /// With the patch's sort ○ shows the rows in the server's own order
+    /// (Sandstorm's CM order) with no heading marked, the selection keeping
+    /// its place, and ○ again the column it had; left or right from there
+    /// moves one from that column, a heading sorts by it (its own too), and
+    /// the list opened again is sorted by name. The control: without the
+    /// patch ○ goes on to the next column.
+    #[test]
+    fn circle_shows_the_servers_order_with_the_patch() {
+        use crate::pointer::testing::{NullRaster, mid, vui};
+        let vui = vui();
+        // the server's order; by name Amy, Bob, Zed, by level Bob, Zed, Amy
+        let who = Who { list: vec![row("Zed", 0, 0, 30), row("Amy", 0, 0, 10), row("Bob", 0, 0, 50)], ..Default::default() };
+        let mut cues = Vec::new();
+        let shown = |l: &WhoList| l.view.iter().map(|&i| who.list[i].name.clone()).collect::<Vec<_>>();
+        let draw = |l: &mut WhoList, cues: &mut Vec<i32>| {
+            let mut t = Texts::default();
+            l.draw(&vui, &mut t, &who, 0, true, cues);
+            let marked = t.0.iter().any(|(_, s)| s == "<") && t.0.iter().any(|(_, s)| s == ">");
+            marked
+        };
+        let mut l = WhoList::default();
+        l.open(&vui, &NullRaster);
+        l.patch = Some(Arc::new(patch_sort()));
+        assert!(draw(&mut l, &mut cues));
+        assert_eq!(shown(&l), ["Amy", "Bob", "Zed"]);
+        l.sel = 2;
+        l.key(&vui, &NullRaster, &who, 135, true, 0, &mut cues);
+        assert!(!draw(&mut l, &mut cues), "no heading marked");
+        assert_eq!(shown(&l), ["Zed", "Amy", "Bob"], "the server's order");
+        assert_eq!(l.sel, 2, "the place kept");
+        l.key(&vui, &NullRaster, &who, 135, true, 0, &mut cues);
+        assert!(draw(&mut l, &mut cues));
+        assert_eq!((l.sort, shown(&l)), (Sort::Name, vec!["Amy".to_string(), "Bob".into(), "Zed".into()]), "○ again: by name");
+        // from Level: ○, then ○ again, back to Level
+        for k in [137, 137, 137, 135, 135] {
+            l.key(&vui, &NullRaster, &who, k, true, 0, &mut cues);
+        }
+        assert!(draw(&mut l, &mut cues));
+        assert_eq!((l.sort, shown(&l)), (Sort::Level, vec!["Bob".to_string(), "Zed".into(), "Amy".into()]));
+        // left from the server's order: one back from Level
+        l.key(&vui, &NullRaster, &who, 135, true, 0, &mut cues);
+        l.key(&vui, &NullRaster, &who, 136, true, 0, &mut cues);
+        assert!(draw(&mut l, &mut cues));
+        assert_eq!(l.sort, Sort::Class);
+        // a heading from the server's order, the column's own
+        l.key(&vui, &NullRaster, &who, 135, true, 0, &mut cues);
+        draw(&mut l, &mut cues);
+        let class = mid(rows_rect(&l.window, &vui, &NullRaster, 400, 0, 100, 1));
+        assert_eq!(l.point(class), vec![MOVED]);
+        assert!(draw(&mut l, &mut cues), "the class's order, marked");
+        assert!(l.point(class).is_empty(), "the column already sorted by: nothing");
+        // opened again from the server's order: by name
+        l.key(&vui, &NullRaster, &who, 135, true, 0, &mut cues);
+        l.open(&vui, &NullRaster);
+        l.patch = Some(Arc::new(patch_sort()));
+        assert!(draw(&mut l, &mut cues));
+        assert_eq!((l.sort, shown(&l)), (Sort::Name, vec!["Amy".to_string(), "Bob".into(), "Zed".into()]));
+        // the control: the client's ○ is the next column
+        let mut c = WhoList::default();
+        c.open(&vui, &NullRaster);
+        c.key(&vui, &NullRaster, &who, 135, true, 0, &mut cues);
+        assert!(!draw(&mut c, &mut cues));
+        assert_eq!((c.sort, shown(&c)), (Sort::Race, vec!["Amy".to_string(), "Bob".into(), "Zed".into()]), "race (all alike), by name after");
     }
 }
