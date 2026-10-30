@@ -438,8 +438,8 @@ const RANK_WORDS: [i32; 4] = [541, 540, 539, 538];
 
 /// The column the roster is sorted by (the client's own: the game keeps
 /// its members in id order). Names, races and classes from A to Z as the
-/// window spells them, ranks and levels from the highest, the members online
-/// first; a tie by name, then by id.
+/// window spells them, ranks from the highest and levels from the lowest,
+/// the members online first; a tie by name, then by id.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Sort {
     #[default]
@@ -482,7 +482,7 @@ pub fn order(sort: Sort, g: &Guild, word: &dyn Fn(i32) -> String) -> Vec<i32> {
             Sort::Rank => b.rank.cmp(&a.rank),
             Sort::Race => spelled(race_short(a.race)).cmp(&spelled(race_short(b.race))),
             Sort::Class => spelled(class_short(a.class)).cmp(&spelled(class_short(b.class))),
-            Sort::Level => b.level.cmp(&a.level),
+            Sort::Level => a.level.cmp(&b.level),
             Sort::Online => b.online.cmp(&a.online),
         };
         by.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())).then(a.id.cmp(&b.id))
@@ -1215,8 +1215,8 @@ mod tests {
 
     /// The client's sort (F3 20261023-090229): by name from A to Z, case
     /// aside, where the game lists the members by id (the control); ranks
-    /// and levels from the highest, races and classes as the window spells
-    /// them, the members online first; a tie by name.
+    /// from the highest and levels from the lowest, races and classes as the
+    /// window spells them, the members online first; a tie by name.
     #[test]
     fn the_roster_sorts_by_a_column() {
         let g = roster(&[(1, "Zed", 5, 0, 30, 0, false), (2, "amy", 13, 0, 50, 1, true), (3, "Bob", 0, 2, 30, 3, true), (4, "cal", 5, 2, 10, 1, false)]);
@@ -1229,7 +1229,7 @@ mod tests {
         assert_eq!(names(Sort::Race), ["Bob", "cal", "amy", "Zed"]);
         // Bard (cal, Zed), Warrior, Wizard
         assert_eq!(names(Sort::Class), ["cal", "Zed", "Bob", "amy"]);
-        assert_eq!(names(Sort::Level), ["amy", "Bob", "Zed", "cal"]);
+        assert_eq!(names(Sort::Level), ["cal", "Bob", "Zed", "amy"]);
         assert_eq!(names(Sort::Online), ["amy", "Bob", "cal", "Zed"]);
         let mut s = Sort::Name;
         let round: Vec<Sort> = (0..6).map(|_| { s = s.next(); s }).collect();
@@ -1288,7 +1288,7 @@ mod tests {
         assert_eq!(w.point(heading(&w, 465.0)), vec![MOVED]);
         assert_eq!(w.sort, Sort::Level);
         w.draw(&vui, &mut r, &menus, &g, 16, &mut cues);
-        assert_eq!(w.order, [2, 1, 3], "amy 50, Zed 30, Bob 10");
+        assert_eq!(w.order, [3, 1, 2], "Bob 10, Zed 30, amy 50");
         assert_eq!(w.sel, 1, "Zed kept");
         assert!(w.point(heading(&w, 465.0)).is_empty(), "the same column: nothing");
     }
@@ -1322,11 +1322,11 @@ mod tests {
             sorts.push(w.sort);
         }
         assert_eq!(sorts, [Sort::Rank, Sort::Race, Sort::Rank, Sort::Name, Sort::Online]);
-        // L1 again: level, amy 50, Zed 30, Bob 10
+        // L1 again: level, Bob 10, Zed 30, amy 50
         w.key(&menus, &g, 3, &words, 140, true, 0, &mut cues);
         w.draw(&vui, &mut r, &menus, &g, 16, &mut cues);
-        assert_eq!((w.sort, w.order.clone()), (Sort::Level, vec![2, 1, 3]));
-        assert_eq!((w.sel, w.order[w.sel as usize]), (2, 3), "the place kept: Bob there now, not Zed");
+        assert_eq!((w.sort, w.order.clone()), (Sort::Level, vec![3, 1, 2]));
+        assert_eq!((w.sel, w.order[w.sel as usize]), (2, 2), "the place kept: amy there now, not Zed");
         // the top row stays the top row: right twice, online then name
         w.sel = 0;
         w.key(&menus, &g, 3, &words, 137, true, 0, &mut cues);
@@ -1409,8 +1409,9 @@ mod tests {
         let mut t = Texts::default();
         w.draw(&vui, &mut t, &menus, &g, 0, &mut cues);
         let (before, after) = (at(&t, "<").expect("the mark before"), at(&t, ">").expect("the mark after"));
-        // Level's heading is drawn from x 465, on the row above amy's
-        let heading_y = at(&t, "amy").map(|a| a[1] - (vui.font_height(&t) - 4));
+        // Level's heading is drawn from x 465, on the row above Zed's (the
+        // first by level)
+        let heading_y = at(&t, "Zed").map(|a| a[1] - (vui.font_height(&t) - 4));
         assert_eq!(before[0] + width("<") + MARK_GAP, 465, "the mark before ends a gap short of Level");
         assert_eq!(after[0], 465 + heading(Sort::Level) + MARK_GAP, "the mark after starts a gap past it");
         assert_eq!((Some(before[1]), Some(after[1])), (heading_y, heading_y), "on the headings' row");

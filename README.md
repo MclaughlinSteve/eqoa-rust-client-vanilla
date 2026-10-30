@@ -144,7 +144,8 @@ or a browser (each described where it lives below):
   words and its rules are Frontiers'.
 - **Sorted lists**: the Who list and the guild's roster by name each time
   they open, or by any column with ○ (C on the keyboard) or a click on its heading (the game keeps
-  the server's order). On a server whose patch sorts the Who list (Sandstorm's),
+  the server's order), every column from A to Z or the lowest first, levels too (Sandstorm's patch
+  sorts the Who list's from the highest; here the lowest, as its other columns). On a server whose patch sorts the Who list (Sandstorm's),
   the guild's roster takes that sort's keys and marks too: L1 and left a column
   back, R1 and right one on, the column sorted by between the patch's marks, and
   a sort leaving the cursor at its place in the list as the patch's Who list does.

@@ -99,7 +99,7 @@ impl Who {
 
 /// The column the who list is sorted by (the client's own: the game keeps
 /// the server's order). Names, races and classes from A to Z as the window
-/// spells them, levels from the highest; a tie by name, then as sent.
+/// spells them, levels from the lowest; a tie by name, then as sent.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Sort {
     #[default]
@@ -268,7 +268,7 @@ impl PatchSort {
 
     /// The rows in the order the patch leaves them, by `sort`: the list as
     /// sent, sorted stably by the column (a race or a class by its rank,
-    /// levels from the highest) and then the names, byte by byte up to the
+    /// levels from the lowest) and then the names, byte by byte up to the
     /// first that differs, a NUL or `name_bytes`.
     pub fn order(&self, sort: Sort, list: &[WhoRow]) -> Vec<usize> {
         self.sorted(sort, list, (0..list.len()).collect())
@@ -288,7 +288,7 @@ impl PatchSort {
                 Sort::Name => std::cmp::Ordering::Equal,
                 Sort::Race => self.race_rank[(ea.race & 15) as usize].cmp(&self.race_rank[(eb.race & 15) as usize]),
                 Sort::Class => self.class_rank[(ea.class & 15) as usize].cmp(&self.class_rank[(eb.class & 15) as usize]),
-                Sort::Level => eb.level.cmp(&ea.level),
+                Sort::Level => ea.level.cmp(&eb.level),
             };
             by.then_with(|| name(ea).cmp(&name(eb)))
         });
@@ -320,7 +320,7 @@ pub fn order(sort: Sort, list: &[WhoRow], word: &dyn Fn(i32) -> String) -> Vec<u
             Sort::Name => std::cmp::Ordering::Equal,
             Sort::Race => spelled(race_word(ea.race)).cmp(&spelled(race_word(eb.race))),
             Sort::Class => spelled(class_word(ea.class)).cmp(&spelled(class_word(eb.class))),
-            Sort::Level => eb.level.cmp(&ea.level),
+            Sort::Level => ea.level.cmp(&eb.level),
         };
         by.then_with(|| name(a).cmp(&name(b))).then(a.cmp(&b))
     });
@@ -983,7 +983,7 @@ mod tests {
     /// The client's sort (F3 20261023-085524, -090229): by name from A to
     /// Z, case aside, where the game keeps the server's order (the
     /// control); by race and class as the window spells them (an Ogre after
-    /// a Human, an Alchemist, class 14, first), by level from the highest;
+    /// a Human, an Alchemist, class 14, first), by level from the lowest;
     /// a tie by name.
     #[test]
     fn the_rows_sort_by_a_column() {
@@ -996,8 +996,8 @@ mod tests {
         assert_eq!(names(Sort::Race), ["cal", "amy", "Bob", "Zed"]);
         // Alchemist, Bard (cal, Zed), Wizard
         assert_eq!(names(Sort::Class), ["Bob", "cal", "Zed", "amy"]);
-        // 50, 30 (Bob, Zed), 10
-        assert_eq!(names(Sort::Level), ["amy", "Bob", "Zed", "cal"]);
+        // 10, 30 (Bob, Zed), 50
+        assert_eq!(names(Sort::Level), ["cal", "Bob", "Zed", "amy"]);
         assert_eq!([Sort::Name, Sort::Race, Sort::Class, Sort::Level].map(Sort::next), [Sort::Race, Sort::Class, Sort::Level, Sort::Name]);
     }
 
@@ -1024,7 +1024,7 @@ mod tests {
         }
         assert_eq!(l.sort, Sort::Level);
         l.draw(&vui, &mut r, &who, 16, true, &mut cues);
-        assert_eq!(shown(&l), ["amy", "Zed", "Bob"]);
+        assert_eq!(shown(&l), ["Bob", "Zed", "amy"]);
         assert_eq!(l.sel, 1, "Zed still selected");
         // the popup: Tell and Invite name Zed (the server sent amy second)
         l.key(&vui, &r, &who, 134, true, 0, &mut cues);
@@ -1059,7 +1059,7 @@ mod tests {
         assert_eq!(l.point(level), vec![MOVED]);
         assert_eq!(l.sort, Sort::Level);
         l.draw(&vui, &mut r, &who, 16, true, &mut cues);
-        assert_eq!(l.view.iter().map(|&i| who.list[i].name.as_str()).collect::<Vec<_>>(), ["amy", "Zed", "Bob"]);
+        assert_eq!(l.view.iter().map(|&i| who.list[i].name.as_str()).collect::<Vec<_>>(), ["Bob", "Zed", "amy"]);
         assert_eq!(l.sel, 1, "Zed kept");
         assert!(l.point(level).is_empty(), "the same column: nothing");
         l.key(&vui, &r, &who, 134, true, 0, &mut cues);
@@ -1161,7 +1161,7 @@ mod tests {
     }
 
     /// The patch's order: the list as sent, stably by the column (a race or
-    /// a class by its rank, levels from the highest), then the names byte by
+    /// a class by its rank, levels from the lowest), then the names byte by
     /// byte, capitals first, where the client's own goes by them case aside
     /// (the control).
     #[test]
@@ -1175,7 +1175,7 @@ mod tests {
         assert_eq!(names(p.order(Sort::Race, &list)), ["cal", "Bob", "amy", "Zed"]);
         // ALC (Bob), BRD (Zed, cal), WIZ (amy)
         assert_eq!(names(p.order(Sort::Class, &list)), ["Bob", "Zed", "cal", "amy"]);
-        assert_eq!(names(p.order(Sort::Level, &list)), ["amy", "Bob", "Zed", "cal"]);
+        assert_eq!(names(p.order(Sort::Level, &list)), ["cal", "Bob", "Zed", "amy"]);
         assert_eq!([Sort::Name, Sort::Race, Sort::Class, Sort::Level].map(Sort::prev), [Sort::Level, Sort::Name, Sort::Race, Sort::Class]);
     }
 
@@ -1205,8 +1205,8 @@ mod tests {
         }
         assert_eq!(l.sort, Sort::Level);
         l.draw(&vui, &mut r, &who, 16, true, &mut cues);
-        assert_eq!(shown(&l), ["Amy", "Zed", "Bob"]);
-        assert_eq!((l.sel, selected(&l).as_str()), (2, "Bob"), "the place kept, the player there another");
+        assert_eq!(shown(&l), ["Bob", "Zed", "Amy"]);
+        assert_eq!((l.sel, selected(&l).as_str()), (2, "Amy"), "the place kept, the player there another");
         // L1 and left: back to class, then race
         l.key(&vui, &r, &who, 140, true, 0, &mut cues);
         l.key(&vui, &r, &who, 136, true, 0, &mut cues);
@@ -1215,7 +1215,7 @@ mod tests {
         let level = mid(rows_rect(&l.window, &vui, &NullRaster, 500, 0, 60, 1));
         assert_eq!(l.point(level), vec![MOVED]);
         l.draw(&vui, &mut r, &who, 48, true, &mut cues);
-        assert_eq!((l.sort, l.sel, selected(&l).as_str()), (Sort::Level, 2, "Bob"));
+        assert_eq!((l.sort, l.sel, selected(&l).as_str()), (Sort::Level, 2, "Amy"));
         // the control: without the patch ○ keeps the player
         let mut c = WhoList::default();
         c.open(&vui, &r);
@@ -1240,7 +1240,7 @@ mod tests {
         let vui = vui();
         let mut r = NullRaster;
         // by level Bob is on top, by name Amy
-        let who = Who { list: vec![row("Zed", 0, 0, 30), row("Amy", 0, 0, 10), row("Bob", 0, 0, 50)], ..Default::default() };
+        let who = Who { list: vec![row("Zed", 0, 0, 30), row("Amy", 0, 0, 50), row("Bob", 0, 0, 10)], ..Default::default() };
         let mut cues = Vec::new();
         for patch in [None, Some(Arc::new(patch_sort()))] {
             let mut l = WhoList::default();
@@ -1324,7 +1324,7 @@ mod tests {
         use crate::pointer::testing::{NullRaster, mid, vui};
         let vui = vui();
         // the server's order; by name Amy, Bob, Zed, by level Bob, Zed, Amy
-        let who = Who { list: vec![row("Zed", 0, 0, 30), row("Amy", 0, 0, 10), row("Bob", 0, 0, 50)], ..Default::default() };
+        let who = Who { list: vec![row("Zed", 0, 0, 30), row("Amy", 0, 0, 50), row("Bob", 0, 0, 10)], ..Default::default() };
         let mut cues = Vec::new();
         let shown = |l: &WhoList| l.view.iter().map(|&i| who.list[i].name.clone()).collect::<Vec<_>>();
         let draw = |l: &mut WhoList, cues: &mut Vec<i32>| {

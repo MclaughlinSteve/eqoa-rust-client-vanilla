@@ -70,6 +70,10 @@ is put on the page by `.github/workflows/notes.yml`.
   everyone else is: on eqoaclassic a gnome is a little smaller than before (9 tenths). How you walk
   and what you bump into are as before.
 
+## 2026-10-29 · Levels sort lowest first, like every other column
+- Sorting the Who list or the guild list by level now puts the lowest levels at the top, the same
+  way names, races and classes go from A to Z. This is on every server, Sandstorm included.
+
 ## 2026-10-29 · ○ shows the Who list in CM order on Sandstorm
 - On Sandstorm, ○ (C on the keyboard) in the Who list now shows everyone in the server's own order,
   the most combat masteries first, with no column marked. Press ○ again to go back to the column
