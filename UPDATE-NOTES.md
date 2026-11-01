@@ -154,6 +154,27 @@ is put on the page by `.github/workflows/notes.yml`.
   everyone else is: on eqoaclassic a gnome is a little smaller than before (9 tenths). How you walk
   and what you bump into are as before.
 
+## 2026-10-29 · Levels sort lowest first, like every other column
+- Sorting the Who list or the guild list by level now puts the lowest levels at the top, the same
+  way names, races and classes go from A to Z. This is on every server, Sandstorm included.
+
+## 2026-10-29 · ○ shows the Who list in CM order on Sandstorm
+- On Sandstorm, ○ (C on the keyboard) in the Who list now shows everyone in the server's own order,
+  the most combat masteries first, with no column marked. Press ○ again to go back to the column
+  you were sorting by. Left and right (or L1 and R1) still change the column, and the legend at the
+  bottom shows ○ CM Order.
+- Otherwise the list is always in the order of the column marked: pressing Update no longer
+  sometimes shows the server's order under another column's arrows.
+
+## 2026-10-29 · The guild list sorts like the Who list on Sandstorm, and both start by name
+- On a server with Sandstorm's patch, the guild list now sorts the way its Who list does: left and
+  right (or L1 and R1) move the sort to the previous or next column, and arrows mark the column
+  it is sorted by. The legend at the bottom names the keys. As in the Who list, the cursor stays
+  where it was in the list when you sort, so it is on the new first member if it was on the top
+  row. C and a click on a column's heading still sort it too.
+- The Who list and the guild list now open sorted by name every time, whichever column you last
+  sorted them by. Update in the Who list keeps the column you chose.
+
 ## 2026-10-29 · The who list in CM order on Sandstorm, as on a PS2
 - On Sandstorm the who list now shows players in the server's own order, highest combat masteries
   first, whenever you open it again or press Update and nobody has come or gone since: Sandstorm's
