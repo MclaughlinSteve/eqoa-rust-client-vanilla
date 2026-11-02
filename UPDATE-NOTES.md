@@ -5,6 +5,13 @@ in the same push as the changes it describes. The dev release's page shows them
 (`release/notes.sh`, from `.github/workflows/dev.yml`); an edit to this file alone
 is put on the page by `.github/workflows/notes.yml`.
 
+## 2026-11-02 · Master Class abilities on Sandstorm and eqoa.live
+- Class Mastery: on Sandstorm and eqoa.live, buying an ability of your Master Class (a Wizard's Icy
+  Mastery with Flame Mastery owned, for one) no longer stops with "You cannot possess more than one
+  Master Class at a time." These servers don't say which skill is the Master Class, so the game asks
+  its own question with its Master Class warning, as on a PlayStation 2, and the server decides.
+  On eqoaclassic nothing changes.
+
 ## 2026-10-31 · No more problem or crash reports
 - F3 and the HUD's Report a bug button are gone, as is the offer to send a crash report at the next
   start after the game stopped: the game sends no reports of any kind. In the browser the gate's

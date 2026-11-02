@@ -841,8 +841,15 @@ impl ClassMastery {
                             // no box, no sound and nothing sent. The disc's
                             // only warned (1807, as the box below still does).
                             // The ranks after the first, the abilities, are
-                            // bought as any rank is (refuses_master_class)
-                            if node.x10 == MASTER_CLASS && part.refuses_master_class(node.x08, node.x0c) {
+                            // bought as any rank is (refuses_master_class).
+                            // Only with the live feature word, as the live
+                            // client's other parts: the disc's records carry
+                            // no Master Class flag, and a server that sends no
+                            // word (Sandstorm, eqoa.live) lists a class and
+                            // its abilities in either category (a Wizard's
+                            // Sorcerer in 3, its abilities in 4 with no
+                            // parent), so it keeps the disc's warning
+                            if node.x10 == MASTER_CLASS && crate::live::features().live() && part.refuses_master_class(node.x08, node.x0c) {
                                 return Some(CmUp::Warn(1840));
                             }
                             let text = if node.x10 == MASTER_CLASS { wide(&format!("{} {}", vui.words.get(1807, vui.language), vui.words.get(1664, vui.language))) } else { w(1664) };
@@ -1229,6 +1236,8 @@ mod tests {
     /// client refusing only the Master Class itself (each rank is a skill of
     /// category 4 whose parent, the list's or the node's, names the rank
     /// below; the ranks can branch).
+    /// (With the live feature word: without it, the disc's warning,
+    /// `a_server_without_the_live_word_keeps_the_disc_warning`.)
     #[test]
     fn one_master_class_at_a_time() {
         use crate::pointer::testing::{NullRaster, vui};
@@ -1244,7 +1253,8 @@ mod tests {
             c.open(&vui, &NullRaster, &part);
             assert!(c.show_node(&vui, &mut NullRaster, &part, true));
             let mut cues = Vec::new();
-            let up = c.key(&vui, &mut NullRaster, &mut part, key::CROSS, true, 0, &mut cues);
+            // a server that sends the live feature word (eqoaclassic's)
+            let up = crate::live::with_features(Some(0x1B), || c.key(&vui, &mut NullRaster, &mut part, key::CROSS, true, 0, &mut cues));
             (up, c.message.visible, cues)
         };
         let buy = |skills: Vec<Skill>, category: u8| buy_with(skills, category, 0);
@@ -1278,6 +1288,43 @@ mod tests {
         // another Master Class with its abilities under it, as Sandstorm
         // lists them, beside the class owned and one of its abilities
         assert_eq!(buy(vec![rank(1, true, 0), rank(2, true, 1), rank(50, false, 0), rank(51, false, 50)], MASTER_CLASS), (Some(CmUp::Warn(1840)), false, vec![]), "another class with its abilities");
+    }
+
+    /// A server that sends no live feature word (Sandstorm, eqoa.live) keeps
+    /// the disc's warning: the box opens with 1807 before the question,
+    /// whatever is owned. eqoa.live's Wizard (with S2): Sorcerer is category 3,
+    /// its abilities category 4 with no parent; Flame Mastery owned, Icy
+    /// Mastery opens its question. The control: the same list with the live
+    /// word is refused, as are the earlier test's first ranks.
+    #[test]
+    fn a_server_without_the_live_word_keeps_the_disc_warning() {
+        use crate::pointer::testing::{NullRaster, vui};
+        let vui = vui();
+        let skill = |id: i32, on: bool, parent: i32, category: u8, cost: i32, name: &str| Skill { x00: id, on, known: 1, id, parent, category, cost, name: wide(name) };
+        // an owned General skill, so the first list has a line selected and
+        // the node opens in the inspector
+        let list = vec![
+            skill(42, true, 0, 0, 5, "Powerful Mind 1"),
+            skill(797, true, 796, 3, 25, "Sorcerous Maelstrom 4"),
+            skill(803, true, 802, 3, 25, "Wizard's Fury 4"),
+            skill(954, true, 797, 3, 200, "Sorcerer"),
+            skill(955, true, 0, MASTER_CLASS, 50, "Flame Mastery"),
+            skill(956, false, 0, MASTER_CLASS, 50, "Icy Mastery"),
+            skill(957, false, 0, MASTER_CLASS, 50, "Lightning Mastery"),
+            skill(816, false, 0, MASTER_CLASS, 200, "Chosen"),
+        ];
+        let buy = |word: Option<u32>| {
+            let mut part = Part { skills: list.clone(), ..Default::default() };
+            part.node = Some(Node { x04: 0, x05: 78, x08: 956, x0c: 0, x10: MASTER_CLASS, text: wide("t"), lines: vec![wide("Sorcerer")], ..Default::default() });
+            let mut c = ClassMastery::default();
+            c.open(&vui, &NullRaster, &part);
+            assert!(c.show_node(&vui, &mut NullRaster, &part, true));
+            let mut cues = Vec::new();
+            let up = crate::live::with_features(word, || c.key(&vui, &mut NullRaster, &mut part, key::CROSS, true, 0, &mut cues));
+            (up, c.message.visible, cues)
+        };
+        assert_eq!(buy(None), (None, true, vec![15]), "no word: the disc's box");
+        assert_eq!(buy(Some(0x1B)), (Some(CmUp::Warn(1840)), false, vec![]), "the control: the live word's refusal");
     }
 
     /// `VICMNode::Read`: the fields, three strings and three lists; a
