@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "tools/webicons"]
+# gilrs and gilrs-core as published, with a Mac's location ID exposed
+# (`vendor/README.md`): patched in below, not members
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -22,6 +25,12 @@ flate2 = "1"
 crc32fast = "1"
 serde_json = "1"
 web-time = "1.1"
+
+# gilrs with a Mac's controllers named the same in every process
+# (`vendor/README.md`, `input::Gamepads`).
+[patch.crates-io]
+gilrs = { path = "vendor/gilrs" }
+gilrs-core = { path = "vendor/gilrs-core" }
 
 # dnas interprets ~300M EE instructions a module: optimized in debug and
 # test builds too.

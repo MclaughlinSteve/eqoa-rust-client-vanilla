@@ -5,6 +5,13 @@ in the same push as the changes it describes. The dev release's page shows them
 (`release/notes.sh`, from `.github/workflows/dev.yml`); an edit to this file alone
 is put on the page by `.github/workflows/notes.yml`.
 
+## 2026-11-02 · Two controllers, two windows on a Mac
+- On a Mac with two game windows open, each window now gets its own controller. With two
+  controllers alike (two PS4 controllers, say), both windows could end up driven by the same one
+  while the other did nothing, because each window could count them in a different order. Now
+  every window counts them the same way, so Controller 1 and Controller 2 (and Controller Focus's
+  Pad 1 and Pad 2) are the same controllers in every window.
+
 ## 2026-11-02 · Master Class abilities on Sandstorm and eqoa.live
 - Class Mastery: on Sandstorm and eqoa.live, buying an ability of your Master Class (a Wizard's Icy
   Mastery with Flame Mastery owned, for one) no longer stops with "You cannot possess more than one

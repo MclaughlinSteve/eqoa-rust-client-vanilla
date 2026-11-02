@@ -590,6 +590,17 @@ enum Source {
     Page(u32),
 }
 
+/// A Mac's controller's name and place in the order, by its IOKit location
+/// ID (`vendor/README.md`): gilrs's id is the order this process found it in,
+/// which macOS leaves to chance, so two windows named two identical
+/// controllers each the other way round and both read the same one. The
+/// location is the same in every process (its USB port, its Bluetooth
+/// address); without one (0), gilrs's slot, after the others.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn mac_pad(location: u32, slot: u64) -> (String, (u8, u64)) {
+    if location == 0 { (format!("pad{slot}"), (2, slot)) } else { (format!("loc{location:08x}"), (1, location as u64)) }
+}
+
 /// What a window reads of the connected controllers (`pick`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Pick {
@@ -1117,7 +1128,13 @@ impl Gamepads {
                 // after XInput's and the HID ones
                 #[cfg(windows)]
                 let (name, order) = (format!("pad{slot}"), (2, slot));
-                #[cfg(not(any(target_os = "linux", windows)))]
+                // a Mac's by its IOKit location ID (`mac_pad`)
+                #[cfg(target_os = "macos")]
+                let (name, order) = {
+                    use gilrs::MacGamepadExt;
+                    mac_pad(pad.location_id(), slot)
+                };
+                #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
                 let (name, order) = (format!("pad{slot}"), (1, slot));
                 let mut report = report_of(&pad);
                 let between = self.gilrs_seen.get_mut(&id).map_or(0, |l| l.take(report.buttons));
@@ -1661,6 +1678,47 @@ mod tests {
         assert!(wait_for_hid(false, HID_GRACE_MS - 1));
         assert!(!wait_for_hid(false, HID_GRACE_MS), "the control: after the moment, gilrs's");
         assert!(!wait_for_hid(true, 0), "refused: gilrs's at once");
+    }
+
+    /// Two windows on a Mac, each process having found two identical
+    /// controllers in its own order (gilrs's slots the other way round in
+    /// the second): named by their location IDs (`mac_pad`), the first
+    /// window's Auto takes one and the second's the other, and Pad 1 is the
+    /// same controller in both. The control: named by gilrs's slots, as
+    /// before, the second window took the controller the first had.
+    #[test]
+    fn a_macs_controllers_are_named_alike_in_every_window() {
+        let (a, b) = (0x1410_0000u32, 0x1420_0000u32);
+        // each process's controllers in their order, as `Gamepads` lists
+        // them: (name, the controller's location)
+        let found = |slots: [u32; 2], name: &dyn Fn(u32, u64) -> (String, (u8, u64))| {
+            let mut out: Vec<_> = slots.iter().enumerate().map(|(slot, &loc)| (name(loc, slot as u64), loc)).collect();
+            out.sort_by_key(|((_, order), _)| *order);
+            out.into_iter().map(|((n, _), loc)| (n, loc)).collect::<Vec<_>>()
+        };
+        let location = |pads: &[(String, u32)], p: &Pick| match p {
+            Pick::One(n) => pads.iter().find(|(m, _)| m == n).map(|(_, loc)| *loc),
+            _ => None,
+        };
+        let two_windows = |name: &dyn Fn(u32, u64) -> (String, (u8, u64))| {
+            let (first, second) = (found([a, b], name), found([b, a], name));
+            let names = |pads: &[(String, u32)]| pads.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
+            let (n1, n2) = (names(&first), names(&second));
+            let r1: Vec<&str> = n1.iter().map(String::as_str).collect();
+            let r2: Vec<&str> = n2.iter().map(String::as_str).collect();
+            let p1 = pick(Focus::Auto, true, &r1, &seat(0, &[(1, None, Focus::Auto)]), None);
+            let Pick::One(took) = &p1 else { panic!("the first window took none") };
+            let p2 = pick(Focus::Auto, false, &r2, &seat(1, &[(0, Some(took.as_str()), Focus::Auto)]), None);
+            let pad1 = (location(&first, &pick(Focus::Pad(1), true, &r1, &Seat::default(), None)), location(&second, &pick(Focus::Pad(1), true, &r2, &Seat::default(), None)));
+            (location(&first, &p1), location(&second, &p2), pad1)
+        };
+        let (w1, w2, pad1) = two_windows(&mac_pad);
+        assert!(w1.is_some() && w2.is_some() && w1 != w2, "a controller each: {w1:?} {w2:?}");
+        assert_eq!(pad1.0, pad1.1, "Pad 1 the same controller in both");
+        let (w1, w2, pad1) = two_windows(&|_, slot| (format!("pad{slot}"), (1, slot)));
+        assert_eq!(w1, w2, "the control: by gilrs's slots both read one controller");
+        assert_ne!(pad1.0, pad1.1, "and Pad 1 was another in each");
+        assert_eq!(mac_pad(0, 3), ("pad3".to_string(), (2, 3)), "no location: gilrs's slot, after the others");
     }
 
     /// Off, Window and a Pad, each as it says; Auto alone reads every one,

@@ -137,7 +137,10 @@ or a browser (each described where it lives below):
   front or not; the Extended page's Controller Focus picks another (windows
   that pick the same one are all driven by it), or follows the window in
   front. On Windows the Xbox controllers and the DualShock 4 and DualSense
-  alike reach a window behind another.
+  alike reach a window behind another. On a Mac every window orders the
+  controllers alike, by each one's IOKit location ID (gilrs with it exposed,
+  `vendor/`): gilrs's own numbering is the order a process found them in, and
+  two windows had two identical controllers each the other way round.
 - **Each window where it was**: natively a window opens with the size, place,
   monitor and maximized or full-screen state (F11, Alt+Enter or Video's Display) it last had, each of
   several windows its own.
